@@ -15,20 +15,23 @@ This bot provides a safe and private space where students/seekers can reach out 
 2. **Counselor Feed & Multiple Counselors**:
    - Multiple counselors can be configured in `.env`.
    - New incoming questions appear on each counselor's feed (and optionally in a shared counselors' Telegram group).
-   - Any counselor can click `[Select User & Chat]` to claim that seeker.
+   - Any counselor can click `[💬 Chat with User]` to claim that seeker.
    - Atomic claiming prevents two counselors from claiming the same seeker simultaneously.
 
-3. **Confidential Two-Way Communication**:
+3. **Intuitive Navigation & Return Buttons**:
+   - Every view (Feed, Active Chat, Statistics, Help) includes instant inline buttons like `[🔙 Back to Menu]` and `[🔄 Refresh]` for seamless one-click navigation without re-typing commands.
+
+4. **Confidential Two-Way Communication**:
    - Once a counselor selects a user, regular messages sent by the counselor are forwarded to the seeker labeled as `Counselor:`.
    - Messages sent by the seeker are forwarded to the counselor labeled as `[User #1001]:`.
    - Full support for **Text**, **Voice notes**, **Photos**, **Audio**, and **Documents**.
 
-4. **Clean Session Management**:
-   - Seekers can conclude their session anytime using `/close`.
-   - Counselors can conclude their session using `/close` or an inline button, leaving both parties with respectful closure notes.
-   - Counselors can release a user back to the feed using `/release` if they need another team member to take over.
+5. **Clean Session Management**:
+   - Seekers can conclude or cancel their session anytime using `/close` or the `[❌ Conclude Session]` button.
+   - Counselors can conclude their session using `/close` or the `[❌ End Session]` button.
+   - Counselors can release a user back to the feed using `/release` or `[↩️ Return to Feed]` if they need another team member to take over.
 
-5. **Self-Contained SQLite Database**:
+6. **Self-Contained SQLite Database**:
    - Zero external database setup required.
    - Automatically initializes and manages cases, timestamps, and message history.
 
@@ -49,7 +52,7 @@ AMU-ECSF-Counseling-Bot/
 ├── handlers/
 │   ├── __init__.py
 │   ├── user_handlers.py      # Seeker flows (/start, question submission, live chat)
-│   ├── counselor_handlers.py # Counselor flows (feed, claiming, chatting, closing)
+│   ├── counselor_handlers.py # Counselor flows (feed, claiming, chatting, closing, back navigation)
 │   └── common.py             # Anonymous message forwarding and feed broadcast
 └── README.md             # Complete documentation
 ```
@@ -78,9 +81,6 @@ COUNSELOR_IDS=123456789,987654321
 COUNSELOR_GROUP_ID=
 ```
 
-> **How to find your Telegram User ID:**  
-> Simply start the bot in Telegram and send the `/myid` command. The bot will immediately reply with your numeric ID.
-
 ### 3. Run the Bot
 - **Option A (Double-Click)**:
   Double-click `run.bat` in the project folder.
@@ -98,13 +98,13 @@ COUNSELOR_GROUP_ID=
 1. Seeker sends `/start`.
 2. The bot sends the welcoming message:
    ```
-   Welcome
+   👤 Welcome
 
-   Welcome to the AMU-ECSF Counseling bot. Our team is ready to counsel you on your journey. We offer a safe and confidential space for you to explore your concerns.
+   🌿 Welcome to the AMU-ECSF Counseling bot. Our team is ready to counsel you on your journey. We offer a safe and confidential space for you to explore your concerns.
 
-   Here no one can know who you are.
+   🔗 Here no one can know who you are 🔗
 
-   You are 100% safe.
+   🎖 You are 100% safe
 
    Please send your question or concern.
 
@@ -115,38 +115,38 @@ COUNSELOR_GROUP_ID=
    ```
    #SENT
 
-   Request received.
+   ✅ Request received
 
-   Please Wait for the Response Patiently.
+   🔗 Please Wait for the Response Patiently
 
    Your Question:
    ...
    ```
 5. When a counselor joins, the seeker is notified:
    ```
-   A counselor has connected to your session.
-   You are now in a private, confidential counseling chat.
+   🤝 A counselor has connected to your session.
+   🔒 You are now in a private, confidential counseling chat.
    ```
 6. Seeker chats freely and confidentially.
-7. Seeker or counselor ends the session with `/close`.
+7. Seeker or counselor ends the session with `/close` or inline buttons.
 
 ---
 
 ### Counselor Workflow:
-1. Counselor sends `/start` to access the **Counselor Control Panel**.
+1. Counselor sends `/start` to access the **Counselor Control Panel** with quick action buttons.
 2. When a seeker submits a question, all counselors receive an alert:
    ```
-   [New Seeker in Feed]
-   User: Anonymous Seeker #1001
-   Message: "I need prayer and counsel regarding my family..."
+   🔔 [New Seeker in Feed]
+   👤 User: Anonymous Seeker #1001
+   💬 Question: "I need prayer and counsel regarding my family..."
 
-   [Select User #1001 & Chat]
+   [💬 Chat with User #1001]
    ```
-3. Counselor clicks `[Select User #1001 & Chat]`.
+3. Counselor clicks `[💬 Chat with User #1001]`.
 4. The bot connects the counselor directly to User #1001.
 5. While connected, all text, photos, and voice notes the counselor sends to the bot are forwarded to the seeker as `Counselor:`.
-6. When counseling is finished, counselor types `/close` or clicks `[End Session]`.
-7. Counselor can type `/feed` at any time to see other waiting users.
+6. When counseling is finished, counselor types `/close` or clicks `[❌ End Session]`.
+7. Counselor can return to the main menu at any time with `[🔙 Back to Menu]` or view the queue with `[📥 Waiting Feed]`.
 
 ---
 
@@ -158,7 +158,6 @@ COUNSELOR_GROUP_ID=
 | `/start` | View welcome message and guidelines |
 | `/status` | Check if your request is pending or active |
 | `/close` | Conclude and close your current session |
-| `/myid` | View your numeric Telegram user ID |
 | `/help` | Read the seeker confidentiality guide |
 
 ### Counselor Commands
@@ -171,7 +170,6 @@ COUNSELOR_GROUP_ID=
 | `/release` | Return the active seeker back to the feed |
 | `/stats` | View case statistics (total, pending, active, closed) |
 | `/reload` | Reload counselor IDs from `.env` without restarting |
-| `/myid` | Check your Telegram User ID |
 | `/help` | View counselor instructions |
 
 ---

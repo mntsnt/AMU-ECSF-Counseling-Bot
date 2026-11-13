@@ -74,29 +74,29 @@ async def dispatch_close(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     else:
         await close_command_seeker(update, context)
 
-async def myid_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Replies with the user's numeric Telegram ID for easy setup in .env."""
-    user_id = update.effective_user.id
-    is_counselor = config.is_counselor(user_id)
-    role_text = "Authorized Counselor" if is_counselor else "Seeker / User"
-
-    text = (
-        f"Your Telegram User ID is: {user_id}\n"
-        f"Role: {role_text}\n\n"
-        "If you are a counselor or administrator, paste this ID into "
-        "COUNSELOR_IDS in the bot's .env file."
-    )
-    await update.message.reply_text(text)
-
 async def counselor_only_guard(update: Update, context: ContextTypes.DEFAULT_TYPE, handler_func):
     """Guards counselor commands from unauthorized users."""
     user_id = update.effective_user.id
     if not config.is_counselor(user_id):
         await update.message.reply_text(
-            "This command is restricted to authorized counselors."
+            "🔒 This command is restricted to authorized counselors."
         )
         return
     await handler_func(update, context)
+
+async def dispatch_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Dispatches inline button callbacks for both seekers and counselors."""
+    query = update.callback_query
+    data = query.data
+
+    # Seeker actions (e.g. Cancel / Conclude session)
+    if data == "seeker:close":
+        await query.answer()
+        await close_command_seeker(update, context)
+        return
+
+    # Counselor actions (Feed, Navigation, Claims, etc.)
+    await handle_counselor_callback(update, context)
 
 async def dispatch_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Routes incoming non-command messages (text, photos, voice notes, files, etc.)."""
@@ -111,10 +111,9 @@ async def post_init(application) -> None:
     try:
         commands = [
             BotCommand("start", "Start or restart the bot"),
-            BotCommand("feed", "View waiting users (Counselors)"),
+            BotCommand("feed", "View waiting seekers (Counselors)"),
             BotCommand("status", "Check counseling status"),
             BotCommand("close", "Conclude counseling session"),
-            BotCommand("myid", "View your Telegram User ID"),
             BotCommand("help", "Help and information"),
         ]
         await application.bot.set_my_commands(commands)
@@ -157,7 +156,6 @@ def main() -> None:
         print("[NOTICE] No counselor IDs configured yet in .env.")
         print("Counselors will not receive notifications until their Telegram User IDs")
         print("are added to COUNSELOR_IDS in .env.")
-        print("Send /myid to the bot to get your Telegram User ID.")
     else:
         print(f"[OK] Loaded {counselor_count} authorized counselor ID(s): {config.COUNSELOR_IDS}")
 
@@ -178,7 +176,6 @@ def main() -> None:
     application.add_handler(CommandHandler("status", dispatch_status))
     application.add_handler(CommandHandler("close", dispatch_close))
     application.add_handler(CommandHandler("cancel", dispatch_close))
-    application.add_handler(CommandHandler("myid", myid_command))
 
     # Counselor-specific commands
     application.add_handler(CommandHandler("feed", lambda u, c: counselor_only_guard(u, c, feed_command)))
@@ -189,8 +186,8 @@ def main() -> None:
     application.add_handler(CommandHandler("stats", lambda u, c: counselor_only_guard(u, c, stats_command)))
     application.add_handler(CommandHandler("reload", lambda u, c: counselor_only_guard(u, c, reload_command)))
 
-    # Inline Keyboard Callbacks
-    application.add_handler(CallbackQueryHandler(handle_counselor_callback))
+    # Inline Keyboard Callbacks (Seekers & Counselors)
+    application.add_handler(CallbackQueryHandler(dispatch_callback))
 
     # General Messages (Text, Photos, Voice notes, Audio, Documents, Video, Stickers)
     application.add_handler(MessageHandler(filters.ALL & ~filters.COMMAND, dispatch_message))

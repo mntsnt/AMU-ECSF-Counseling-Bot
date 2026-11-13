@@ -16,28 +16,27 @@ async def counselor_start(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     """
     keyboard = InlineKeyboardMarkup([
         [
-            InlineKeyboardButton("Waiting Feed", callback_data="btn:feed"),
-            InlineKeyboardButton("Active Chat", callback_data="btn:active")
+            InlineKeyboardButton("📥 Waiting Feed", callback_data="btn:feed"),
+            InlineKeyboardButton("💬 Active Chat", callback_data="btn:active")
         ],
         [
-            InlineKeyboardButton("Statistics", callback_data="btn:stats"),
-            InlineKeyboardButton("Help & Guide", callback_data="btn:help")
+            InlineKeyboardButton("📊 Statistics", callback_data="btn:stats"),
+            InlineKeyboardButton("ℹ️ Help & Guide", callback_data="btn:help")
         ]
     ])
 
     text = (
-        "Counselor Control Panel\n\n"
-        f"Welcome to the {config.BOT_NAME} counselor portal.\n"
+        "🛠 Counselor Control Panel\n\n"
+        f"Welcome to the {config.BOT_NAME} administration portal. "
         "You are recognized as an authorized counselor.\n\n"
         "Commands:\n"
-        "/feed or /cases - View feed of new users waiting for counsel\n"
-        "/active - View the user you are currently chatting with\n"
-        "/close - Conclude and close your active session\n"
-        "/release - Return your active user back to the feed\n"
-        "/stats - View counseling statistics\n"
-        "/reload - Reload counselor list from .env\n"
-        "/myid - View your numeric Telegram user ID\n"
-        "/help - View full guide\n\n"
+        "📥 /feed - View waiting seekers in the queue\n"
+        "💬 /active - View the seeker currently assigned to you\n"
+        "❌ /close - Conclude and close your active session\n"
+        "↩️ /release - Return your active seeker back to the feed\n"
+        "📊 /stats - View counseling statistics\n"
+        "🔄 /reload - Reload counselor IDs from .env\n"
+        "ℹ️ /help - Show detailed instructions\n\n"
         "Choose an option below or type a command:"
     )
 
@@ -48,19 +47,21 @@ async def counselor_start(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
 async def feed_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """
-    Displays the feed of new users waiting to be counseled.
-    Counselor can select any user to begin chatting.
+    Displays the feed of new users waiting to be counseled with Return/Back buttons.
     """
     pending = database.get_pending_cases(limit=10)
     
     if not pending:
         text = (
-            "Counselor Feed\n\n"
-            "The feed is currently clear. No users are waiting right now.\n"
-            "You will be notified as soon as a new user sends a message."
+            "📥 Counselor Feed\n\n"
+            "The feed is currently clear. No seekers are waiting right now.\n"
+            "You will be notified immediately when a new user sends a message."
         )
         refresh_kb = InlineKeyboardMarkup([
-            [InlineKeyboardButton("Refresh Feed", callback_data="btn:feed")]
+            [
+                InlineKeyboardButton("🔄 Refresh Feed", callback_data="btn:feed"),
+                InlineKeyboardButton("🔙 Back to Menu", callback_data="btn:start")
+            ]
         ])
         if update.message:
             await update.message.reply_text(text, reply_markup=refresh_kb)
@@ -68,20 +69,21 @@ async def feed_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             await update.callback_query.edit_message_text(text, reply_markup=refresh_kb)
         return
 
-    text = f"Counselor Feed ({len(pending)} waiting):\n\n"
+    text = f"📥 Counselor Feed ({len(pending)} waiting):\n\n"
     keyboard_buttons = []
 
     for item in pending:
         cid = item["case_id"]
         q = item["initial_question"] or "[No preview text]"
         short_q = (q[:120] + "...") if len(q) > 120 else q
-        text += f"Anonymous User #{cid}:\n\"{short_q}\"\n\n"
+        text += f"👤 Anonymous User #{cid}:\n\"{short_q}\"\n\n"
         keyboard_buttons.append([
-            InlineKeyboardButton(f"Select User #{cid} & Chat", callback_data=f"claim:{cid}")
+            InlineKeyboardButton(f"💬 Chat with User #{cid}", callback_data=f"claim:{cid}")
         ])
 
     keyboard_buttons.append([
-        InlineKeyboardButton("Refresh Feed", callback_data="btn:feed")
+        InlineKeyboardButton("🔄 Refresh Feed", callback_data="btn:feed"),
+        InlineKeyboardButton("🔙 Back to Menu", callback_data="btn:start")
     ])
 
     reply_markup = InlineKeyboardMarkup(keyboard_buttons)
@@ -92,19 +94,22 @@ async def feed_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
 async def active_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """
-    Shows details of the user the counselor is currently chatting with.
+    Shows details of the user the counselor is currently chatting with with navigation buttons.
     """
     counselor_id = update.effective_user.id
     active_case = database.get_active_case_for_counselor(counselor_id)
 
     if not active_case:
         text = (
-            "Active Session\n\n"
-            "You are not currently chatting with any user.\n"
-            "Use /feed to select a waiting user and begin counseling."
+            "💬 Active Session\n\n"
+            "You are not currently chatting with any seeker.\n"
+            "Use the button below to view waiting requests in the feed."
         )
         kb = InlineKeyboardMarkup([
-            [InlineKeyboardButton("View Waiting Feed", callback_data="btn:feed")]
+            [
+                InlineKeyboardButton("📥 View Waiting Feed", callback_data="btn:feed"),
+                InlineKeyboardButton("🔙 Back to Menu", callback_data="btn:start")
+            ]
         ])
         if update.message:
             await update.message.reply_text(text, reply_markup=kb)
@@ -117,19 +122,23 @@ async def active_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     q = active_case["initial_question"] or "[No preview]"
 
     text = (
-        f"Active Counseling Session\n\n"
-        f"User: Anonymous User #{cid}\n"
-        f"Connected: {claimed_at}\n\n"
-        f"Initial Message:\n\"{q}\"\n\n"
-        "Live Mode Active: Any regular message, voice note, or media you send here "
-        "will be delivered directly and anonymously to the user.\n\n"
-        "When finished, use /close to conclude the session."
+        f"💬 Active Counseling Session\n\n"
+        f"👤 User: Anonymous Seeker #{cid}\n"
+        f"⏰ Connected: {claimed_at}\n\n"
+        f"📝 Initial Message:\n\"{q}\"\n\n"
+        "🔒 Live Mode Active: Any regular message, voice note, or media you send here "
+        "will be delivered directly and anonymously to the seeker.\n\n"
+        "Options below:"
     )
 
     kb = InlineKeyboardMarkup([
         [
-            InlineKeyboardButton("End Session", callback_data=f"close:{cid}"),
-            InlineKeyboardButton("Release to Feed", callback_data=f"release:{cid}")
+            InlineKeyboardButton("❌ End Session", callback_data=f"close:{cid}"),
+            InlineKeyboardButton("↩️ Return to Feed", callback_data=f"release:{cid}")
+        ],
+        [
+            InlineKeyboardButton("📥 View Waiting Feed", callback_data="btn:feed"),
+            InlineKeyboardButton("🔙 Back to Menu", callback_data="btn:start")
         ]
     ])
 
@@ -146,9 +155,15 @@ async def close_command_counselor(update: Update, context: ContextTypes.DEFAULT_
     active_case = database.get_active_case_for_counselor(counselor_id)
 
     if not active_case:
+        kb = InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton("📥 View Waiting Feed", callback_data="btn:feed"),
+                InlineKeyboardButton("🔙 Back to Menu", callback_data="btn:start")
+            ]
+        ])
         await update.message.reply_text(
-            "You do not have an active counseling session to close.\n"
-            "Use /feed to view waiting users."
+            "ℹ️ You do not have an active counseling session to close.",
+            reply_markup=kb
         )
         return
 
@@ -158,16 +173,23 @@ async def close_command_counselor(update: Update, context: ContextTypes.DEFAULT_
     # Close in database
     database.close_case(cid, closed_by="COUNSELOR")
 
-    # Notify counselor
+    kb = InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("📥 View Waiting Feed", callback_data="btn:feed"),
+            InlineKeyboardButton("🔙 Back to Menu", callback_data="btn:start")
+        ]
+    ])
+
     await update.message.reply_text(
-        f"Session with User #{cid} concluded successfully.\n"
-        "You are now free. Check /feed to select another waiting user."
+        f"✅ Session with User #{cid} concluded successfully.\n"
+        "You are now free. Check the feed to select another waiting seeker.",
+        reply_markup=kb
     )
 
     # Notify seeker
     try:
         closing_note = (
-            "Your counseling session has been concluded by the counselor.\n\n"
+            "✅ Your counseling session has been concluded by the counselor.\n\n"
             "Thank you for reaching out to AMU-ECSF Counseling. We pray that God guides, "
             "comforts, and strengthens you on your journey.\n\n"
             "If you ever need counsel again in the future, simply send /start or type a new question anytime. "
@@ -185,8 +207,15 @@ async def release_command_counselor(update: Update, context: ContextTypes.DEFAUL
     active_case = database.get_active_case_for_counselor(counselor_id)
 
     if not active_case:
+        kb = InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton("📥 View Waiting Feed", callback_data="btn:feed"),
+                InlineKeyboardButton("🔙 Back to Menu", callback_data="btn:start")
+            ]
+        ])
         await update.message.reply_text(
-            "You do not have an active session to release."
+            "ℹ️ You do not have an active session to release.",
+            reply_markup=kb
         )
         return
 
@@ -196,11 +225,19 @@ async def release_command_counselor(update: Update, context: ContextTypes.DEFAUL
 
     success = database.release_case(cid, counselor_id)
     if not success:
-        await update.message.reply_text("Could not release this user.")
+        await update.message.reply_text("⚠️ Could not release this user.")
         return
 
+    kb = InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("📥 View Waiting Feed", callback_data="btn:feed"),
+            InlineKeyboardButton("🔙 Back to Menu", callback_data="btn:start")
+        ]
+    ])
+
     await update.message.reply_text(
-        f"User #{cid} has been returned to the feed for other counselors to take."
+        f"↩️ User #{cid} has been returned to the feed for other counselors to take.",
+        reply_markup=kb
     )
 
     # Notify seeker
@@ -208,7 +245,7 @@ async def release_command_counselor(update: Update, context: ContextTypes.DEFAUL
         await context.bot.send_message(
             chat_id=seeker_id,
             text=(
-                "Your counselor had to step away. Your request has been returned to the queue, "
+                "⏳ Your counselor had to step away. Your request has been returned to the queue, "
                 "and another counselor from our team will join you shortly. "
                 "Thank you for your patience."
             )
@@ -221,33 +258,40 @@ async def release_command_counselor(update: Update, context: ContextTypes.DEFAUL
 
 async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """
-    Displays counseling statistics.
+    Displays counseling statistics with return button.
     """
     stats = database.get_statistics()
     text = (
-        "Counseling Bot Statistics\n\n"
-        f"Total Users Counseled: {stats['total']}\n"
-        f"Waiting in Feed: {stats['pending']}\n"
-        f"Active Sessions: {stats['active']}\n"
-        f"Completed Sessions: {stats['closed']}\n"
+        "📊 Counseling Bot Statistics\n\n"
+        f"👥 Total Users Counseled: {stats['total']}\n"
+        f"⏳ Waiting in Feed: {stats['pending']}\n"
+        f"💬 Active Sessions: {stats['active']}\n"
+        f"✅ Completed Sessions: {stats['closed']}\n"
     )
+    kb = InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("🔄 Refresh Stats", callback_data="btn:stats"),
+            InlineKeyboardButton("🔙 Back to Menu", callback_data="btn:start")
+        ]
+    ])
     if update.message:
-        await update.message.reply_text(text)
+        await update.message.reply_text(text, reply_markup=kb)
     elif update.callback_query:
-        await update.callback_query.edit_message_text(
-            text, 
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("Back", callback_data="btn:start")]])
-        )
+        await update.callback_query.edit_message_text(text, reply_markup=kb)
 
 async def reload_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """
     Reloads configurations from .env at runtime.
     """
     config.reload_config()
+    kb = InlineKeyboardMarkup([
+        [InlineKeyboardButton("🔙 Back to Menu", callback_data="btn:start")]
+    ])
     await update.message.reply_text(
-        f"Configuration reloaded from .env.\n"
+        f"🔄 Configuration reloaded from .env.\n"
         f"Active counselors count: {len(config.COUNSELOR_IDS)}\n"
-        f"Counselor Group ID: {config.COUNSELOR_GROUP_ID or 'Not set'}"
+        f"Counselor Group ID: {config.COUNSELOR_GROUP_ID or 'Not set'}",
+        reply_markup=kb
     )
 
 async def handle_counselor_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -276,7 +320,7 @@ async def handle_counselor_callback(update: Update, context: ContextTypes.DEFAUL
     elif data == "btn:help":
         await query.edit_message_text(
             config.HELP_MESSAGE_COUNSELOR,
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("Back", callback_data="btn:start")]])
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back to Menu", callback_data="btn:start")]])
         )
         return
     elif data == "btn:start":
@@ -295,8 +339,13 @@ async def handle_counselor_callback(update: Update, context: ContextTypes.DEFAUL
             await query.answer(msg, show_alert=True)
             try:
                 await query.edit_message_text(
-                    f"Notice regarding User #{case_id}:\n{msg}",
-                    reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("View Waiting Feed", callback_data="btn:feed")]])
+                    f"⚠️ Notice regarding User #{case_id}:\n{msg}",
+                    reply_markup=InlineKeyboardMarkup([
+                        [
+                            InlineKeyboardButton("📥 View Waiting Feed", callback_data="btn:feed"),
+                            InlineKeyboardButton("🔙 Back to Menu", callback_data="btn:start")
+                        ]
+                    ])
                 )
             except Exception:
                 pass
@@ -305,23 +354,29 @@ async def handle_counselor_callback(update: Update, context: ContextTypes.DEFAUL
         seeker_id = case_data["seeker_id"]
         q_text = case_data["initial_question"] or ""
 
-        # Update the clicked message in feed
+        # Update the clicked message in feed with Return / Action buttons
         await query.edit_message_text(
-            f"User #{case_id} Selected\n\n"
-            f"Initial Message:\n\"{q_text}\"\n\n"
-            "You are now chatting anonymously with this user. "
-            "Every message, voice note, or photo you send in this bot chat will be delivered directly to the user.\n\n"
-            "When finished, use /close to conclude the session.",
+            f"🤝 User #{case_id} Connected\n\n"
+            f"📝 Initial Message:\n\"{q_text}\"\n\n"
+            "🔒 You are now chatting anonymously with this seeker. "
+            "Every message, voice note, or media you send in this bot chat will be delivered directly to the user.\n\n"
+            "When finished, use the End Session button below or send /close.",
             reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("End Session", callback_data=f"close:{case_id}")]
+                [
+                    InlineKeyboardButton("❌ End Session", callback_data=f"close:{case_id}"),
+                    InlineKeyboardButton("↩️ Return to Feed", callback_data=f"release:{case_id}")
+                ],
+                [
+                    InlineKeyboardButton("🔙 Back to Menu", callback_data="btn:start")
+                ]
             ])
         )
 
         # Notify seeker
         try:
             seeker_notify_text = (
-                "A counselor has connected to your session.\n\n"
-                "You are now in a private, confidential counseling chat. "
+                "🤝 A counselor has connected to your session.\n\n"
+                "🔒 You are now in a private, confidential counseling chat. "
                 "Feel free to share your thoughts openly and safely."
             )
             await context.bot.send_message(chat_id=seeker_id, text=seeker_notify_text)
@@ -344,14 +399,19 @@ async def handle_counselor_callback(update: Update, context: ContextTypes.DEFAUL
         database.close_case(case_id, closed_by="COUNSELOR")
 
         await query.edit_message_text(
-            f"Session with User #{case_id} has been concluded and closed.\n"
-            "You are now free to select another user.",
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("View Waiting Feed", callback_data="btn:feed")]])
+            f"✅ Session with User #{case_id} has been concluded and closed.\n"
+            "You are now free to select another seeker.",
+            reply_markup=InlineKeyboardMarkup([
+                [
+                    InlineKeyboardButton("📥 View Waiting Feed", callback_data="btn:feed"),
+                    InlineKeyboardButton("🔙 Back to Menu", callback_data="btn:start")
+                ]
+            ])
         )
 
         try:
             closing_note = (
-                "Your counseling session has been concluded by the counselor.\n\n"
+                "✅ Your counseling session has been concluded by the counselor.\n\n"
                 "Thank you for reaching out to AMU-ECSF Counseling. We pray that God guides, "
                 "comforts, and strengthens you on your journey.\n\n"
                 "If you ever need counsel again in the future, simply send /start or type a new question anytime. "
@@ -378,15 +438,20 @@ async def handle_counselor_callback(update: Update, context: ContextTypes.DEFAUL
         database.release_case(case_id, user_id)
 
         await query.edit_message_text(
-            f"User #{case_id} has been returned to the feed for other counselors to take.",
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("View Waiting Feed", callback_data="btn:feed")]])
+            f"↩️ User #{case_id} has been returned to the feed for other counselors to take.",
+            reply_markup=InlineKeyboardMarkup([
+                [
+                    InlineKeyboardButton("📥 View Waiting Feed", callback_data="btn:feed"),
+                    InlineKeyboardButton("🔙 Back to Menu", callback_data="btn:start")
+                ]
+            ])
         )
 
         try:
             await context.bot.send_message(
                 chat_id=seeker_id,
                 text=(
-                    "Your counselor had to step away. Your request has been returned to the queue, "
+                    "⏳ Your counselor had to step away. Your request has been returned to the queue, "
                     "and another counselor from our team will join you shortly. "
                     "Thank you for your patience."
                 )
@@ -410,9 +475,16 @@ async def handle_counselor_message(update: Update, context: ContextTypes.DEFAULT
     active_case = database.get_active_case_for_counselor(counselor_id)
 
     if not active_case:
+        kb = InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton("📥 View Waiting Feed", callback_data="btn:feed"),
+                InlineKeyboardButton("🔙 Back to Menu", callback_data="btn:start")
+            ]
+        ])
         await message.reply_text(
-            "You have not selected a user to chat with right now.\n\n"
-            "Use /feed to view waiting users and select one to begin counseling."
+            "ℹ️ You have not selected a user to chat with right now.\n\n"
+            "Use the button below or send /feed to select a waiting seeker.",
+            reply_markup=kb
         )
         return
 
@@ -422,6 +494,6 @@ async def handle_counselor_message(update: Update, context: ContextTypes.DEFAULT
     success = await forward_to_seeker(context, seeker_id, message, cid)
     if not success:
         await message.reply_text(
-            f"Could not deliver your message to User #{cid}. "
+            f"⚠️ Could not deliver your message to User #{cid}. "
             "They may have blocked or stopped the bot."
         )

@@ -17,7 +17,7 @@ def extract_message_content(message: Message) -> tuple[str, str]:
         msg_type = "photo" if message.photo else "document" if message.document else "media"
         return message.caption, msg_type
     elif message.photo:
-        return "[Photo]", "photo"
+        return "[Photo message]", "photo"
     elif message.voice:
         return "[Voice note]", "voice"
     elif message.audio:
@@ -26,7 +26,7 @@ def extract_message_content(message: Message) -> tuple[str, str]:
         doc_name = message.document.file_name or "document"
         return f"[File: {doc_name}]", "document"
     elif message.video:
-        return "[Video]", "video"
+        return "[Video message]", "video"
     elif message.sticker:
         return "[Sticker]", "sticker"
     else:
@@ -42,18 +42,17 @@ async def broadcast_new_case_to_counselors(
     """
     preview = (initial_question[:400] + "...") if len(initial_question) > 400 else initial_question
     feed_text = (
-        f"[New Seeker in Feed]\n"
-        f"User: Anonymous Seeker #{case_id}\n"
-        f"Status: Waiting for Counselor\n\n"
-        f"Message:\n\"{preview}\"\n\n"
-        "Click below to select this user and chat anonymously:"
+        f"🔔 [New Seeker in Feed]\n"
+        f"👤 User: Anonymous Seeker #{case_id}\n"
+        f"⏳ Status: Waiting for Counselor\n\n"
+        f"💬 Question:\n\"{preview}\"\n\n"
+        "Click below to claim this case and begin counseling:"
     )
 
     keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton(f"Select User #{case_id} & Chat", callback_data=f"claim:{case_id}")]
+        [InlineKeyboardButton(f"💬 Chat with User #{case_id}", callback_data=f"claim:{case_id}")]
     ])
 
-    # 1. Broadcast to individual counselor chats
     for cid in config.COUNSELOR_IDS:
         try:
             await context.bot.send_message(
@@ -64,7 +63,6 @@ async def broadcast_new_case_to_counselors(
         except Exception as e:
             logger.warning(f"Could not send feed alert to counselor {cid}: {e}")
 
-    # 2. If a counselor group is configured, also post to the group feed
     if config.COUNSELOR_GROUP_ID:
         try:
             await context.bot.send_message(
@@ -87,12 +85,12 @@ async def broadcast_pending_update_to_counselors(
     preview = (content_text[:300] + "...") if len(content_text) > 300 else content_text
 
     alert_text = (
-        f"[Feed Update on User #{case_id}]\n"
+        f"📩 [Feed Update - User #{case_id}]\n"
         f"Seeker added:\n\"{preview}\""
     )
 
     keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton(f"Select User #{case_id} & Chat", callback_data=f"claim:{case_id}")]
+        [InlineKeyboardButton(f"💬 Chat with User #{case_id}", callback_data=f"claim:{case_id}")]
     ])
 
     for cid in config.COUNSELOR_IDS:
