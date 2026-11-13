@@ -60,20 +60,34 @@ def parse_counselor_group_id() -> Optional[int]:
 
 COUNSELOR_GROUP_ID: Optional[int] = parse_counselor_group_id()
 
+# Webhook configuration (for serverless deployments like Vercel)
+WEBHOOK_URL: str = os.getenv("WEBHOOK_URL", "").strip()
+
 def reload_config() -> None:
     """Reload all configurations from .env at runtime."""
-    global COUNSELOR_IDS, COUNSELOR_GROUP_ID, BOT_TOKEN
+    global COUNSELOR_IDS, COUNSELOR_GROUP_ID, BOT_TOKEN, WEBHOOK_URL
     load_env_file()
     COUNSELOR_IDS = parse_counselor_ids()
     COUNSELOR_GROUP_ID = parse_counselor_group_id()
     BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
+    WEBHOOK_URL = os.getenv("WEBHOOK_URL", "").strip()
 
 def is_counselor(user_id: int) -> bool:
     """Check if given Telegram user_id is an authorized counselor."""
     return user_id in COUNSELOR_IDS
 
-# Database Configuration
-DATABASE_PATH: Path = BASE_DIR / os.getenv("DATABASE_PATH", "counseling_bot.db")
+# Serverless environment detection (e.g. Vercel, AWS Lambda)
+IS_SERVERLESS: bool = bool(
+    os.getenv("VERCEL") 
+    or os.getenv("AWS_LAMBDA_FUNCTION_NAME") 
+    or os.getenv("SERVERLESS")
+)
+
+# Database Configuration (uses /tmp on serverless where root is read-only)
+if IS_SERVERLESS:
+    DATABASE_PATH: Path = Path("/tmp") / os.getenv("DATABASE_PATH", "counseling_bot.db")
+else:
+    DATABASE_PATH: Path = BASE_DIR / os.getenv("DATABASE_PATH", "counseling_bot.db")
 
 # Organization / Bot Branding Texts
 BOT_NAME: str = os.getenv("BOT_NAME", "AMU-ECSF Counseling Bot")

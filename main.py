@@ -1,8 +1,13 @@
 import sys
+import json
+import asyncio
 import logging
+from urllib.parse import parse_qs
+from typing import Optional
 from telegram import Update, BotCommand
 from telegram.ext import (
     ApplicationBuilder,
+    Application,
     CommandHandler,
     MessageHandler,
     CallbackQueryHandler,
@@ -89,13 +94,11 @@ async def dispatch_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     query = update.callback_query
     data = query.data
 
-    # Seeker actions (e.g. Cancel / Conclude session)
     if data == "seeker:close":
         await query.answer()
         await close_command_seeker(update, context)
         return
 
-    # Counselor actions (Feed, Navigation, Claims, etc.)
     await handle_counselor_callback(update, context)
 
 async def dispatch_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -106,7 +109,7 @@ async def dispatch_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     else:
         await handle_seeker_message(update, context)
 
-async def post_init(application) -> None:
+async def post_init(application: Application) -> None:
     """Sets standard menu commands on startup."""
     try:
         commands = [
@@ -125,52 +128,15 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> N
     """Logs unexpected exceptions."""
     logger.error("Exception while handling an update:", exc_info=context.error)
 
-def main() -> None:
-    """Entry point to launch the bot."""
-    print("=" * 60)
-    print(f"Starting {config.BOT_NAME}...")
-    print("=" * 60)
+def build_application(token: Optional[str] = None) -> Application:
+    """Builds and configures the python-telegram-bot Application instance."""
+    bot_token = token or config.BOT_TOKEN
+    database.init_db()
 
-    # 1. Initialize Database
-    try:
-        database.init_db()
-        print(f"[OK] Database initialized at: {config.DATABASE_PATH.name}")
-    except Exception as e:
-        print(f"[ERROR] Could not initialize database: {e}")
-        sys.exit(1)
+    app_builder = ApplicationBuilder().token(bot_token)
+    application = app_builder.post_init(post_init).build()
 
-    # 2. Check Bot Token
-    token = config.BOT_TOKEN
-    if not token or token == "your_bot_token_here":
-        print("\n" + "!" * 60)
-        print("[SETUP REQUIRED] Telegram Bot Token is missing in .env!")
-        print("Please open .env in this folder:")
-        print(f"  {config.BASE_DIR / '.env'}")
-        print("and set BOT_TOKEN to your token from @BotFather.")
-        print("!" * 60 + "\n")
-        sys.exit(1)
-
-    # 3. Inform about counselors
-    counselor_count = len(config.COUNSELOR_IDS)
-    if counselor_count == 0:
-        print("[NOTICE] No counselor IDs configured yet in .env.")
-        print("Counselors will not receive notifications until their Telegram User IDs")
-        print("are added to COUNSELOR_IDS in .env.")
-    else:
-        print(f"[OK] Loaded {counselor_count} authorized counselor ID(s): {config.COUNSELOR_IDS}")
-
-    if config.COUNSELOR_GROUP_ID:
-        print(f"[OK] Counselor Team Group ID configured: {config.COUNSELOR_GROUP_ID}")
-
-    # 4. Build application
-    application = (
-        ApplicationBuilder()
-        .token(token)
-        .post_init(post_init)
-        .build()
-    )
-
-    # 5. Register Command Handlers
+    # Commands
     application.add_handler(CommandHandler("start", dispatch_start))
     application.add_handler(CommandHandler("help", dispatch_help))
     application.add_handler(CommandHandler("status", dispatch_status))
@@ -186,20 +152,165 @@ def main() -> None:
     application.add_handler(CommandHandler("stats", lambda u, c: counselor_only_guard(u, c, stats_command)))
     application.add_handler(CommandHandler("reload", lambda u, c: counselor_only_guard(u, c, reload_command)))
 
-    # Inline Keyboard Callbacks (Seekers & Counselors)
+    # Callbacks
     application.add_handler(CallbackQueryHandler(dispatch_callback))
 
-    # General Messages (Text, Photos, Voice notes, Audio, Documents, Video, Stickers)
+    # Messages
     application.add_handler(MessageHandler(filters.ALL & ~filters.COMMAND, dispatch_message))
 
-    # Error handler
+    # Error handling
     application.add_error_handler(error_handler)
 
-    print(f"\n[OK] {config.BOT_NAME} is online and listening for updates...")
+    return application
+
+# Lazy singleton for serverless / webhook mode
+_serverless_application: Optional[Application] = None
+
+def get_serverless_application() -> Application:
+    global _serverless_application
+    if _serverless_application is None:
+        _serverless_application = build_application()
+    return _serverless_application
+
+# ==============================================================================
+# WSGI Entrypoint for Serverless Platforms (Vercel, Render, AWS Lambda, WSGI)
+# ==============================================================================
+def wsgi_app(environ, start_response):
+    """
+    Standard WSGI entrypoint that satisfies Vercel, Gunicorn, uWSGI, and Render.
+    Handles GET health checks, webhook setup, and incoming POST Telegram updates.
+    """
+    method = environ.get("REQUEST_METHOD", "GET").upper()
+    path = environ.get("PATH_INFO", "/")
+
+    # GET Endpoints
+    if method == "GET":
+        query_string = environ.get("QUERY_STRING", "")
+        params = parse_qs(query_string)
+
+        # Webhook setup helper: /set_webhook?url=https://...
+        if path.startswith("/set_webhook"):
+            target_url = params.get("url", [None])[0]
+            if not target_url:
+                host = environ.get("HTTP_HOST", "")
+                if host:
+                    target_url = f"https://{host}/"
+
+            if target_url:
+                try:
+                    bot_app = get_serverless_application()
+                    async def _set_wh():
+                        await bot_app.bot.set_webhook(url=target_url)
+                    asyncio.run(_set_wh())
+                    resp = json.dumps({
+                        "ok": True,
+                        "message": f"Webhook registered successfully to: {target_url}"
+                    }).encode("utf-8")
+                    start_response("200 OK", [("Content-Type", "application/json"), ("Content-Length", str(len(resp)))])
+                    return [resp]
+                except Exception as e:
+                    resp = json.dumps({"ok": False, "error": str(e)}).encode("utf-8")
+                    start_response("500 Internal Server Error", [("Content-Type", "application/json"), ("Content-Length", str(len(resp)))])
+                    return [resp]
+            else:
+                resp = json.dumps({
+                    "ok": False,
+                    "error": "Missing 'url' parameter. Usage: /set_webhook?url=https://your-domain.vercel.app/"
+                }).encode("utf-8")
+                start_response("400 Bad Request", [("Content-Type", "application/json"), ("Content-Length", str(len(resp)))])
+                return [resp]
+
+        # Standard Health Check
+        status_data = {
+            "status": "online",
+            "bot": config.BOT_NAME,
+            "mode": "serverless_webhook",
+            "message": "AMU-ECSF Counseling Bot is online and operational."
+        }
+        body = json.dumps(status_data, indent=2).encode("utf-8")
+        start_response("200 OK", [("Content-Type", "application/json"), ("Content-Length", str(len(body)))])
+        return [body]
+
+    # POST Webhook Updates from Telegram
+    if method == "POST":
+        try:
+            content_length = int(environ.get("CONTENT_LENGTH", 0))
+        except (ValueError, TypeError):
+            content_length = 0
+
+        request_body = environ["wsgi.input"].read(content_length)
+        if request_body:
+            try:
+                update_dict = json.loads(request_body.decode("utf-8"))
+                
+                async def _process():
+                    bot_app = get_serverless_application()
+                    if not bot_app._initialized:
+                        await bot_app.initialize()
+                    update = Update.de_json(update_dict, bot_app.bot)
+                    await bot_app.process_update(update)
+
+                asyncio.run(_process())
+            except Exception as e:
+                logger.error(f"Error processing webhook update: {e}", exc_info=True)
+
+        body = b'{"ok": true}'
+        start_response("200 OK", [("Content-Type", "application/json"), ("Content-Length", str(len(body)))])
+        return [body]
+
+    body = b'{"error": "Method not allowed"}'
+    start_response("405 Method Not Allowed", [("Content-Type", "application/json"), ("Content-Length", str(len(body)))])
+    return [body]
+
+# Top-level variables exported specifically for Vercel and WSGI servers
+app = wsgi_app
+application = wsgi_app
+handler = wsgi_app
+
+# ==============================================================================
+# Local / Long Polling Runner
+# ==============================================================================
+def main() -> None:
+    """Entry point for local execution or persistent background workers."""
+    print("=" * 60)
+    print(f"Starting {config.BOT_NAME}...")
+    print("=" * 60)
+
+    try:
+        database.init_db()
+        print(f"[OK] Database initialized at: {config.DATABASE_PATH}")
+    except Exception as e:
+        print(f"[ERROR] Could not initialize database: {e}")
+        sys.exit(1)
+
+    token = config.BOT_TOKEN
+    if not token or token == "your_bot_token_here":
+        print("\n" + "!" * 60)
+        print("[SETUP REQUIRED] Telegram Bot Token is missing in .env!")
+        print("Please open .env in this folder:")
+        print(f"  {config.BASE_DIR / '.env'}")
+        print("and set BOT_TOKEN to your token from @BotFather.")
+        print("!" * 60 + "\n")
+        sys.exit(1)
+
+    counselor_count = len(config.COUNSELOR_IDS)
+    if counselor_count == 0:
+        print("[NOTICE] No counselor IDs configured yet in .env.")
+        print("Counselors will not receive notifications until their Telegram User IDs")
+        print("are added to COUNSELOR_IDS in .env.")
+    else:
+        print(f"[OK] Loaded {counselor_count} authorized counselor ID(s): {config.COUNSELOR_IDS}")
+
+    if config.COUNSELOR_GROUP_ID:
+        print(f"[OK] Counselor Team Group ID configured: {config.COUNSELOR_GROUP_ID}")
+
+    # Build bot application
+    bot_app = build_application(token)
+
+    print(f"\n[OK] {config.BOT_NAME} is online and listening for updates (Polling mode)...")
     print("Press Ctrl+C to stop.\n")
 
-    # 6. Run Polling
-    application.run_polling(drop_pending_updates=True)
+    bot_app.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
     main()
